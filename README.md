@@ -61,4 +61,3 @@ You **must** run this project using a local web server. Here are a few easy ways
 5.  Choose the branch you want to deploy from (e.g., `main` or `master`).
 6.  Select the root folder (`/root`).
 7.  Click "Save". GitHub will build and deploy your site. The link will appear on the Pages settings page after a minute or two.
-8.  Update the `[Live Demo Link] - https://darshil-lalchandani.github.io/coloring-game` at the top of this README with your GitHub Pages URL.
