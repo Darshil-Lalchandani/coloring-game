@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Color the Mouse!</title>
+    <style>
+        /* --- Base Styles --- */
+        body {
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+            box-sizing: border-box;
+            position: relative; /* Needed for absolute positioned cursor */
+        }
+        h1 { color: #333; margin-top: 0; }
+        p { color: #555; margin-bottom: 15px; text-align: center; }
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #fff;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.15);
+            width: 95%;
+            max-width: 900px; /* Max width for canvas container */
+            box-sizing: border-box;
+            position: relative; /* Needed for absolute positioning palette */
+        }
+
+        /* --- Toolbar --- */
+        #toolbar {
+            margin-bottom: 20px; /* Space below toolbar */
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            width: 100%;
+            justify-content: center;
+            position: relative; /* Parent for absolute positioned palette */
+            z-index: 10; /* Ensure toolbar is above canvas if palette overlaps */
+        }
+        .tool-button {
+            padding: 8px 15px;
+            border: 2px solid #ccc;
+            border-radius: 5px;
+            cursor: pointer;
+            background-color: #f9f9f9;
+            font-size: 1rem;
+            transition: background-color 0.2s ease, border-color 0.2s ease;
+        }
+        .tool-button:hover {
+            background-color: #e9e9e9;
+        }
+        .tool-button.active { /* Active tool button styling */
+            background-color: #007bff;
+            color: white;
+            border-color: #0056b3;
+        }
+        .icon-brush::before { content: '🖌️'; margin-right: 5px; }
+        .icon-fill::before { content: '💧'; margin-right: 5px; }
+
+        /* --- Circular Colors Button Styling --- */
+        #colors-button {
+            width: 45px; /* Diameter */
+            height: 45px; /* Diameter */
+            border-radius: 50%; /* Make it round */
+            border: 3px solid #333; /* Thicker Border, slightly darker */
+            background-color: #eee; /* Default background */
+            cursor: pointer;
+            position: relative; /* For pseudo-elements */
+            overflow: hidden; /* Hide parts of lines outside circle */
+            padding: 0; /* Remove padding if any */
+            font-size: 0; /* Hide any accidental text */
+            transition: background-color 0.2s ease, box-shadow 0.2s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+         /* Vertical dividing line */
+        #colors-button::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            width: 3px; /* Thicker Line thickness */
+            height: 100%;
+            background-color: #333; /* Line color */
+            transform: translateX(-50%);
+        }
+         /* Horizontal dividing line */
+        #colors-button::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            width: 100%;
+            height: 3px; /* Thicker Line thickness */
+            background-color: #333; /* Line color */
+            transform: translateY(-50%);
+        }
+        /* Optional: Add quadrant colors (can be removed if just lines are desired) */
+        #colors-button span {
+            position: absolute;
+            width: 50%; height: 50%;
+            opacity: 0.7; /* Make colors subtle */
+        }
+        #colors-button .q1 { top: 0; left: 0; background-color: #ffcccb; } /* Light Red */
+        #colors-button .q2 { top: 0; right: 0; background-color: #add8e6; } /* Light Blue */
+        #colors-button .q3 { bottom: 0; left: 0; background-color: #90ee90; } /* Light Green */
+        #colors-button .q4 { bottom: 0; right: 0; background-color: #fffacd; } /* Lemon Chiffon */
+
+        /* --- Color Palette (Positioned Absolutely, hidden initially) --- */
+        #color-palette {
+            position: absolute; /* Position relative to #toolbar */
+            top: 115%; /* Position below button */
+            left: 50%; /* Center horizontally */
+            transform: translateX(-50%); /* Fine-tune centering */
+            width: 90%; /* Make palette wide but not full width */
+            max-width: 450px; /* Limit max width */
+            background-color: #ffffff;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            padding: 15px;
+            box-sizing: border-box;
+            z-index: 20; /* Ensure palette is above canvas */
+
+            /* Visibility & Animation */
+            opacity: 0;
+            visibility: hidden;
+            max-height: 0; /* Start collapsed */
+            overflow: hidden; /* Hide content when collapsed */
+            transition: opacity 0.3s ease, max-height 0.3s ease, visibility 0.3s step-end;
+             transition-delay: 0s, 0s, 0.3s; /* Delay hiding visibility */
+
+            /* Scrollable Content Area */
+            display: flex; /* Use flex for layout inside */
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+            /* These styles apply when visible */
+            /* overflow-y: auto; will be set by JS/Class */
+        }
+        #color-palette.visible {
+            opacity: 1;
+            visibility: visible;
+            max-height: 180px; /* <<< FIXED SCROLLABLE HEIGHT */
+            overflow-y: auto; /* <<< ENABLE SCROLLING */
+            transition-delay: 0s; /* Remove delay when becoming visible */
+        }
+        .color-swatch { /* Style mostly remains same, adjust margin if needed */
+             width: 35px; /* Slightly smaller swatches */
+             height: 35px;
+             border: 2px solid #ccc;
+             border-radius: 50%;
+             cursor: pointer;
+             transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+             flex-shrink: 0;
+        }
+        .color-swatch:hover { transform: scale(1.1); box-shadow: 0 2px 5px rgba(0,0,0,0.15); }
+        .color-swatch.selected { border-color: #007bff; border-width: 3px; transform: scale(1.05); box-shadow: 0 0 6px rgba(0, 123, 255, 0.5); }
+
+        /* --- Canvas --- */
+        #canvas-wrapper {
+            width: 100%;
+            max-width: 100%;
+            position: relative;
+            margin-top: 10px; /* Pushed down slightly by toolbar */
+            line-height: 0; /* Prevent extra space below canvas */
+        }
+        #coloringCanvas {
+            display: block; /* Remove extra space */
+            border: 2px solid #555;
+            cursor: none; /* Hide default system cursor */
+            touch-action: none;
+            background-color: #fff; /* White background */
+            width: 100%; /* Scale display width */
+            height: auto; /* Maintain aspect ratio */
+            max-width: 100%;
+            border-radius: 5px;
+            pointer-events: auto; /* Ensure canvas accepts events */
+        }
+
+        /* --- Custom Cursor --- */
+        #brush-cursor {
+            position: absolute;
+            width: 10px; height: 10px;
+            border: 2px solid black;
+            border-radius: 50%;
+            background-color: rgba(255, 255, 0, 0.5);
+            /* CRUCIAL: Ignore mouse events on the cursor itself */
+            pointer-events: none;
+            transform: translate(-50%, -50%);
+            visibility: hidden; /* Start hidden */
+            z-index: 1000;
+            transition: width 0.1s ease, height 0.1s ease, background-color 0.1s ease, border 0.1s ease, border-radius 0.1s ease;
+        }
+        #brush-cursor.fill-cursor {
+            border-radius: 0;
+            background-color: transparent;
+            border: 2px solid black;
+             width: 20px; height: 20px;
+        }
+        #brush-cursor.eraser {
+            background-color: rgba(255, 255, 255, 0.5);
+            border: 2px dashed #555;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Custom cursor element -->
+    <div id="brush-cursor"></div>
+
+    <h1>Color the Mouse and Cheese!</h1>
+    <!-- Instructions can be simplified -->
+    <p>Choose Brush or Fill, pick a color, then click/draw!</p>
+
+    <div class="container">
+        <!-- Toolbar now includes Colors button -->
+        <div id="toolbar">
+            <button id="brush-tool" class="tool-button active icon-brush">Brush</button>
+            <button id="fill-tool" class="tool-button icon-fill">Fill</button>
+            <!-- Updated Colors Button Structure -->
+            <button id="colors-button">
+                <!-- Spans for optional quadrant colors -->
+                <span class="q1"></span><span class="q2"></span>
+                <span class="q3"></span><span class="q4"></span>
+            </button>
+             <!-- Palette is now positioned absolutely relative to this toolbar -->
+             <div id="color-palette">
+                 <!-- Swatches are added here by JS -->
+             </div>
+        </div>
+
+
+        <!-- Canvas Wrapper -->
+        <div id="canvas-wrapper">
+             <canvas id="coloringCanvas"></canvas>
+        </div>
+    </div>
+
+    <script>
+        // --- Configuration ---
+        const colors = [ // Using the large array from previous step
+            '#FF0000', '#DC143C', '#B22222', '#8B0000', '#CD5C5C', '#F08080', '#FA8072', '#E9967A', '#FFA07A', '#FF6347', '#FF4500',
+            '#FFC0CB', '#FFB6C1', '#FF69B4', '#FF1493', '#DB7093', '#C71585', '#FF00FF', '#EE82EE', '#DA70D6', '#BA55D3', '#9932CC', '#8A2BE2',
+            '#FFA500', '#FF8C00', '#FF7F50', '#FF6347', '#FF4500', '#FFD700', '#FFA500', '#FF8C00', '#FF7F50',
+            '#FFFF00', '#FFFFE0', '#FFFACD', '#FAFAD2', '#FFEFD5', '#FFE4B5', '#FFDAB9', '#EEE8AA', '#F0E68C', '#BDB76B',
+            '#ADFF2F', '#7FFF00', '#7CFC00', '#00FF00', '#32CD32', '#98FB98', '#90EE90', '#00FA9A', '#00FF7F', '#3CB371', '#2E8B57', '#228B22', '#008000', '#006400', '#9ACD32', '#6B8E23', '#808000', '#556B2F',
+            '#00FFFF', '#E0FFFF', '#AFEEEE', '#7FFFD4', '#40E0D0', '#48D1CC', '#00CED1', '#5F9EA0', '#4682B4', '#B0C4DE',
+            '#ADD8E6', '#B0E0E6', '#87CEFA', '#87CEEB', '#00BFFF', '#1E90FF', '#6495ED', '#7B68EE', '#4169E1', '#0000FF', '#0000CD', '#00008B', '#000080', '#191970',
+            '#E6E6FA', '#D8BFD8', '#DDA0DD', '#DA70D6', '#EE82EE', '#FF00FF', '#BA55D3', '#9370DB', '#8A2BE2', '#9400D3', '#9932CC', '#8B008B', '#800080', '#4B0082', '#6A5ACD', '#483D8B',
+            '#FFF8DC', '#FFEBCD', '#FFE4C4', '#FFDEAD', '#F5DEB3', '#DEB887', '#D2B48C', '#BC8F8F', '#F4A460', '#DAA520', '#B8860B', '#CD853F', '#D2691E', '#8B4513', '#A0522D', '#A52A2A', '#800000',
+            '#FFFFFF', '#F5F5F5', '#DCDCDC', '#D3D3D3', '#C0C0C0', '#A9A9A9', '#808080', '#696969', '#778899', '#708090', '#2F4F4F', '#000000'
+        ];
+        const defaultColor = '#FFD700';
+        const brushSize = 15;
+        const eraserSize = 25;
+        const imageFilename = 'mouse_cheese.png'; // <<< ENSURE THIS FILENAME IS CORRECT
+        const boundaryColorThreshold = 60;
+        const colorMatchTolerance = 20;
+        const paletteHideDelay = 300; // Milliseconds delay before hiding palette
+
+        // --- Elements ---
+        const canvas = document.getElementById('coloringCanvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const paletteContainer = document.getElementById('color-palette');
+        const brushCursor = document.getElementById('brush-cursor');
+        const brushToolBtn = document.getElementById('brush-tool');
+        const fillToolBtn = document.getElementById('fill-tool');
+        const colorsButton = document.getElementById('colors-button'); // NEW Button Element
+        const canvasWrapper = document.getElementById('canvas-wrapper');
+
+        // --- State Variables ---
+        let isDrawing = false;
+        let selectedColor = defaultColor;
+        let lastX = 0, lastY = 0; // For brush tool
+        let currentBrushSize = brushSize;
+        let currentTool = 'brush';
+        let isImageLoaded = false;
+        let hidePaletteTimeout; // Timeout ID for hiding palette
+
+        // --- Image Loading ---
+        const img = new Image();
+        img.onload = () => {
+             console.log("Image loaded successfully:", imageFilename);
+             isImageLoaded = true; // <<< SET FLAG
+             canvas.width = img.naturalWidth;
+             canvas.height = img.naturalHeight;
+             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+             // Set initial state ONLY after image is loaded
+             ctx.lineCap = 'round';
+             ctx.lineJoin = 'round';
+             setActiveTool('brush'); // Set default tool (this calls setupBrush & updateBrushCursorStyle)
+
+             // Ensure default color swatch is selected visually
+             const defaultSwatch = paletteContainer.querySelector(`[data-color="${defaultColor}"]`);
+             if (defaultSwatch) {
+                 defaultSwatch.classList.add('selected');
+             } else {
+                 // Fallback if default color isn't found (select the first one)
+                 const firstSwatch = paletteContainer.firstChild;
+                 if (firstSwatch && typeof firstSwatch.click === 'function') {
+                     console.warn(`Default color ${defaultColor} not found in palette, selecting first color.`);
+                     firstSwatch.click();
+                 } else if (firstSwatch) {
+                      // Manual selection if click simulation fails
+                      selectedColor = firstSwatch.dataset.color;
+                      setupBrush(selectedColor);
+                      updateBrushCursorStyle();
+                      firstSwatch.classList.add('selected');
+                 }
+             }
+              console.log("Canvas initialized after image load.");
+         };
+        img.onerror = (err) => {
+            console.error("IMAGE LOAD FAILED:", imageFilename, err);
+            alert(`Error: Could not load the coloring image "${imageFilename}".\n\nPlease ensure:\n1. The image file exists in the same directory as the HTML file.\n2. The filename in the script ('${imageFilename}') matches exactly (case-sensitive).\n3. The image file is not corrupted.`);
+            const wrapper = document.getElementById('canvas-wrapper');
+            if(wrapper) {
+                wrapper.innerHTML = `<p style='color: red; text-align: center; padding: 20px;'>Failed to load coloring image: ${imageFilename}.<br>Please check file existence and name.</p>`;
+            }
+        };
+        // Set src AFTER defining onload/onerror
+        img.src = imageFilename;
+
+        // --- Tool Selection ---
+        function setActiveTool(toolName) {
+            if (!isImageLoaded) return;
+            console.log("Setting active tool:", toolName);
+            currentTool = toolName;
+            // Use classList.add/remove for clarity
+            if (toolName === 'brush') {
+                brushToolBtn.classList.add('active');
+                fillToolBtn.classList.remove('active');
+                setupBrush(selectedColor); // Apply brush settings
+            } else if (toolName === 'fill') {
+                fillToolBtn.classList.add('active');
+                brushToolBtn.classList.remove('active');
+            }
+            updateBrushCursorStyle(); // Update cursor for the new tool
+        }
+        brushToolBtn.addEventListener('click', () => setActiveTool('brush'));
+        fillToolBtn.addEventListener('click', () => setActiveTool('fill'));
+
+        // --- Color Palette Creation ---
+        function createPalette() {
+            console.log("Creating color palette...");
+            paletteContainer.innerHTML = ''; // Clear previous swatches if any
+            if (!colors || colors.length === 0) {
+                console.error("Color array is empty!");
+                return;
+            }
+            colors.forEach((color, index) => {
+                try {
+                    const swatch = document.createElement('div');
+                    swatch.classList.add('color-swatch');
+                    swatch.style.backgroundColor = color;
+                    swatch.dataset.color = color;
+
+                    // Special styling for eraser/black
+                    if (color === '#FFFFFF') {
+                        swatch.style.backgroundImage = 'linear-gradient(45deg, #ccc 25%, transparent 25%, transparent 75%, #ccc 75%), linear-gradient(45deg, #ccc 25%, transparent 25%, transparent 75%, #ccc 75%)';
+                        swatch.style.backgroundSize = '10px 10px';
+                        swatch.style.backgroundPosition = '0 0, 5px 5px';
+                        swatch.style.border = '3px solid #888';
+                    } else if (color === '#000000') {
+                         swatch.style.border = '3px solid #555';
+                    }
+
+                    swatch.addEventListener('click', () => {
+                        if (!isImageLoaded) return; // Don't select color if image isn't ready
+                        selectedColor = color;
+                        console.log("Selected color:", selectedColor);
+                        // Update context settings primarily needed for the brush tool
+                        if (currentTool === 'brush') {
+                             setupBrush(selectedColor);
+                        }
+                        updateBrushCursorStyle(); // Update cursor appearance regardless of tool
+                        // Update visual selection
+                        document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('selected'));
+                        swatch.classList.add('selected');
+                        // Optionally hide palette after selection:
+                        // paletteContainer.classList.remove('visible');
+                    });
+                    paletteContainer.appendChild(swatch);
+                } catch (error) {
+                     console.error(`Error creating swatch for color ${color} at index ${index}:`, error);
+                }
+            });
+            console.log("Palette created with", colors.length, "colors.");
+        }
+
+        // --- Palette Visibility Control ---
+        function showPalette() {
+             clearTimeout(hidePaletteTimeout); // Cancel any pending hide
+             paletteContainer.classList.add('visible');
+        }
+
+        function hidePalette() {
+             // Use setTimeout to delay hiding
+             hidePaletteTimeout = setTimeout(() => {
+                 paletteContainer.classList.remove('visible');
+             }, paletteHideDelay);
+        }
+        // Add listeners to the button and the palette itself
+        colorsButton.addEventListener('mouseenter', showPalette);
+        colorsButton.addEventListener('mouseleave', hidePalette);
+        paletteContainer.addEventListener('mouseenter', showPalette); // Keep open if mouse enters palette
+        paletteContainer.addEventListener('mouseleave', hidePalette); // Hide if mouse leaves palette
+
+        // --- Brush/Eraser Context Setup ---
+         function setupBrush(color) {
+             ctx.strokeStyle = color; // Set color for stroke
+             if (color === '#FFFFFF') { // Eraser setup for brush tool
+                 ctx.globalCompositeOperation = 'source-over'; // Eraser paints over
+                 currentBrushSize = eraserSize;
+             } else { // Normal brush color setup
+                 ctx.globalCompositeOperation = 'multiply'; // Brush blends
+                 currentBrushSize = brushSize;
+             }
+             ctx.lineWidth = currentBrushSize; // Set line width for stroke
+         }
+
+        // --- Custom Cursor Style Update ---
+        function updateBrushCursorStyle() {
+            if (!brushCursor || !isImageLoaded) return; // Don't update if cursor element or image isn't ready
+
+            brushCursor.classList.remove('fill-cursor', 'eraser'); // Clear previous tool states
+            brushCursor.style.borderRadius = '50%'; // Default round
+
+            if (currentTool === 'fill') {
+                 brushCursor.classList.add('fill-cursor');
+                 brushCursor.style.width = `20px`; // Example fixed size for fill
+                 brushCursor.style.height = `20px`;
+                 brushCursor.style.backgroundColor = 'transparent';
+                 brushCursor.style.border = '2px solid black';
+                 brushCursor.style.borderRadius = '0'; // Make it square or use icon later
+            } else { // Brush or Eraser tool
+                const size = (selectedColor === '#FFFFFF') ? eraserSize : brushSize;
+                currentBrushSize = size; // Ensure state matches cursor size
+                brushCursor.style.width = `${size}px`;
+                brushCursor.style.height = `${size}px`;
+
+                if (selectedColor === '#FFFFFF') { // Eraser Style
+                    brushCursor.classList.add('eraser');
+                    brushCursor.style.backgroundColor = 'rgba(255, 255, 255, 0.5)';
+                    brushCursor.style.border = '2px dashed #333';
+                } else { // Normal Brush Cursor Style
+                    const rgbaColor = hexToRgba(selectedColor, 0.6);
+                    brushCursor.style.backgroundColor = rgbaColor || 'transparent'; // Fallback
+                    brushCursor.style.border = `2px solid ${isColorLight(selectedColor) ? 'black' : 'white'}`;
+                }
+            }
+        }
+
+        // --- Event Handlers ---
+        function handleMouseDown(e) {
+             if (!isImageLoaded || (e.button && e.button !== 0)) return; // Check image loaded & left click
+             // Use clientX/Y for initial check if pageX/Y not available on event (touch fallback)
+             const clickTarget = e.target || document.elementFromPoint(e.clientX || 0, e.clientY || 0);
+             // Ensure the click actually started *on* the canvas, not just the wrapper
+             if (clickTarget !== canvas) {
+                 // console.log("Click did not originate on canvas.");
+                 return;
+             }
+
+             if (currentTool === 'brush') {
+                 isDrawing = true;
+                 setupBrush(selectedColor); // Ensure correct context for drawing
+                 [lastX, lastY] = getCanvasPos(e); // Get initial coords
+                  if (isNaN(lastX)) return; // Exit if coords invalid
+                 // Draw initial dot
+                 ctx.fillStyle = selectedColor; // Use fillStyle for the dot
+                 ctx.beginPath();
+                 ctx.arc(lastX, lastY, currentBrushSize / 2, 0, Math.PI * 2);
+                 const currentComposite = ctx.globalCompositeOperation; // Remember current setting
+                  // Apply correct composite operation specifically for the dot fill
+                 ctx.globalCompositeOperation = (selectedColor === '#FFFFFF') ? 'source-over' : 'multiply';
+                 ctx.fill();
+                 ctx.globalCompositeOperation = currentComposite; // Restore for subsequent stroke
+                 ctx.beginPath(); // Start new path for the line stroke
+                 ctx.moveTo(lastX, lastY);
+
+             } else if (currentTool === 'fill') {
+                 // Prevent accidental selection drag for fill
+                 if (e.preventDefault) e.preventDefault();
+
+                 const [startX, startY] = getCanvasPos(e);
+                  if (isNaN(startX)) { console.error("Invalid click coordinates for fill."); return; }
+                 const fillColorRgba = hexToRgbaArray(selectedColor);
+                 if (fillColorRgba) {
+                      console.log(`Filling from ${startX.toFixed(1)}, ${startY.toFixed(1)} with ${selectedColor}`);
+                      // IMPORTANT: Use source-over for fill to replace pixels correctly
+                      const originalComposite = ctx.globalCompositeOperation;
+                      ctx.globalCompositeOperation = 'source-over';
+                     floodFill(startX, startY, fillColorRgba);
+                      ctx.globalCompositeOperation = originalComposite; // Restore previous mode
+                 } else {
+                     console.error("Invalid fill color selected:", selectedColor);
+                 }
+             }
+        }
+
+        function handleMouseMove(e) {
+             // This function is now only attached to the canvas/wrapper
+             if (!isImageLoaded) return;
+
+             // Always move the custom cursor
+             moveBrushCursor(e); // Uses getPagePos from the event
+
+             // Only draw strokes if brush tool is active and mouse is down
+             if (currentTool === 'brush' && isDrawing) {
+                 const [currentX, currentY] = getCanvasPos(e); // Get coords relative to canvas
+                 if (isNaN(currentX)) return; // Skip if coords invalid
+
+                 ctx.lineTo(currentX, currentY);
+                 ctx.stroke();
+                 ctx.beginPath(); // Prepare for next segment
+                 ctx.moveTo(currentX, currentY);
+                 [lastX, lastY] = [currentX, currentY];
+             }
+        }
+
+        function handleMouseUp(e) {
+             if (!isImageLoaded || (e.button && e.button !== 0)) return;
+             if (currentTool === 'brush' && isDrawing) {
+                 ctx.beginPath(); // Finalize any pending path
+                 isDrawing = false;
+             }
+        }
+
+         function handleMouseEnterCanvasArea() {
+             if (!isImageLoaded) return;
+             // console.log("Mouse Enter Canvas Area");
+             updateBrushCursorStyle();
+             brushCursor.style.visibility = 'visible';
+         }
+
+         function handleMouseLeaveCanvasArea(e) {
+             // Check if the mouse truly left the wrapper, not just moved onto the palette/toolbar
+              if (!canvasWrapper.contains(e.relatedTarget) && !paletteContainer.contains(e.relatedTarget)) {
+                // console.log("Mouse Leave Canvas Area");
+                 brushCursor.style.visibility = 'hidden';
+                 if (isDrawing) { // Stop drawing if dragging mouse out
+                     isDrawing = false;
+                     ctx.beginPath();
+                 }
+              }
+         }
+
+        // --- Flood Fill Implementation ---
+        function floodFill(startX, startY, fillColorRgba) {
+             // Ensure coordinates are integers for pixel indexing
+             startX = Math.floor(startX);
+             startY = Math.floor(startY);
+
+             if (startX < 0 || startX >= canvas.width || startY < 0 || startY >= canvas.height) {
+                 console.log("Fill start point out of bounds.");
+                 return;
+             }
+
+             console.time("FloodFill"); // Start timer
+             const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+             const data = imageData.data; // Pixel data array (R,G,B,A, R,G,B,A, ...)
+             const canvasWidth = canvas.width;
+             const canvasHeight = canvas.height;
+
+             const startPos = (startY * canvasWidth + startX) * 4;
+             const startR = data[startPos];
+             const startG = data[startPos + 1];
+             const startB = data[startPos + 2];
+             const startColor = [startR, startG, startB]; // Store as array for easier comparison
+
+             const targetFillColor = [fillColorRgba[0], fillColorRgba[1], fillColorRgba[2]];
+
+             // Check if the starting pixel is already the fill color or a boundary
+              if (colorsMatch(startColor, targetFillColor, 5)) { // Tolerance 5
+                  console.log("Start color is same as fill color.");
+                  console.timeEnd("FloodFill");
+                  return; // Already filled
+              }
+              if (isBoundaryColor(startColor)) {
+                  console.log("Clicked on boundary.");
+                  console.timeEnd("FloodFill");
+                  return; // Clicked on a line
+              }
+
+             const pixelStack = [[startX, startY]]; // Use a stack (or queue)
+             let iterations = 0;
+             const maxIterations = canvasWidth * canvasHeight * 2; // Safety break
+
+             // Create a visited map to prevent re-checking pixels in complex shapes
+             const visited = new Uint8Array(canvasWidth * canvasHeight);
+             visited[startY * canvasWidth + startX] = 1;
+
+             while (pixelStack.length > 0) {
+                 iterations++;
+                 if(iterations > maxIterations) {
+                     console.error("Flood fill exceeded max iterations, stopping.");
+                     break;
+                 }
+
+                 const [currentX, currentY] = pixelStack.pop(); // Get pixel from stack
+                 const currentPos = (currentY * canvasWidth + currentX) * 4;
+
+                 // Fill the current pixel (already checked it's valid before pushing)
+                 data[currentPos]     = fillColorRgba[0]; // R
+                 data[currentPos + 1] = fillColorRgba[1]; // G
+                 data[currentPos + 2] = fillColorRgba[2]; // B
+                 data[currentPos + 3] = fillColorRgba[3]; // A (usually 255)
+
+                 // Check neighbors (NESW)
+                 const neighbors = [
+                     [currentX + 1, currentY], [currentX - 1, currentY],
+                     [currentX, currentY + 1], [currentX, currentY - 1]
+                 ];
+
+                 for (const [nx, ny] of neighbors) {
+                     if (nx >= 0 && nx < canvasWidth && ny >= 0 && ny < canvasHeight) {
+                         const neighborIndex = ny * canvasWidth + nx;
+                         if (visited[neighborIndex] === 1) {
+                             continue; // Skip already visited/queued
+                         }
+
+                         const neighborPos = neighborIndex * 4;
+                         const nR = data[neighborPos];
+                         const nG = data[neighborPos + 1];
+                         const nB = data[neighborPos + 2];
+                         const neighborColor = [nR, nG, nB];
+
+                         if (!isBoundaryColor(neighborColor) && colorsMatch(neighborColor, startColor, colorMatchTolerance)) {
+                             visited[neighborIndex] = 1; // Mark as visited/queued
+                             pixelStack.push([nx, ny]);
+                         }
+                     }
+                 }
+             }
+
+             // Put the modified data back onto the canvas
+             ctx.putImageData(imageData, 0, 0);
+             console.log("Fill complete in", iterations, "iterations.");
+             console.timeEnd("FloodFill");
+         }
+
+        // Helper: Check if a color is a boundary (e.g., black/dark)
+        function isBoundaryColor(rgbArray) {
+            const intensity = (rgbArray[0] + rgbArray[1] + rgbArray[2]) / 3;
+            return intensity < boundaryColorThreshold;
+        }
+
+        // Helper: Check if two colors match within a tolerance
+        function colorsMatch(color1, color2, tolerance) {
+            return (
+                Math.abs(color1[0] - color2[0]) <= tolerance &&
+                Math.abs(color1[1] - color2[1]) <= tolerance &&
+                Math.abs(color1[2] - color2[2]) <= tolerance
+            );
+        }
+
+        // --- Coordinate Helpers ---
+        function getCanvasPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            let clientX, clientY;
+            // Use changedTouches for touch events if available, otherwise touches
+            if (e.changedTouches && e.changedTouches.length > 0) {
+                clientX = e.changedTouches[0].clientX;
+                clientY = e.changedTouches[0].clientY;
+            } else if (e.touches && e.touches.length > 0) {
+                 clientX = e.touches[0].clientX;
+                 clientY = e.touches[0].clientY;
+            } else {
+                clientX = e.clientX;
+                clientY = e.clientY;
+            }
+            // Check if rect dimensions are valid
+            if (!rect.width || !rect.height) {
+                 console.error("Canvas bounding rect has zero dimensions.");
+                 return [NaN, NaN];
+            }
+             // Check if client coordinates are valid
+             if (typeof clientX === 'undefined' || typeof clientY === 'undefined') {
+                  console.error("Could not determine clientX/Y from event:", e);
+                  return [NaN, NaN];
+             }
+
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const canvasX = (clientX - rect.left) * scaleX;
+            const canvasY = (clientY - rect.top) * scaleY;
+            return [canvasX, canvasY];
+        }
+
+        // Helper: Get mouse/touch position relative to the page document
+        function getPagePos(e) {
+             let pageX, pageY;
+             // Use changedTouches for touch events if available, otherwise touches
+             if (e.changedTouches && e.changedTouches.length > 0) {
+                 pageX = e.changedTouches[0].pageX;
+                 pageY = e.changedTouches[0].pageY;
+             } else if (e.touches && e.touches.length > 0) {
+                 pageX = e.touches[0].pageX;
+                 pageY = e.touches[0].pageY;
+             }
+             // Check if it's a standard mouse event
+             else if (typeof e.pageX !== 'undefined' && typeof e.pageY !== 'undefined') {
+                 pageX = e.pageX;
+                 pageY = e.pageY;
+             }
+             // Fallback for older browsers or unexpected event types
+             else if (typeof e.clientX !== 'undefined' && typeof e.clientY !== 'undefined') {
+                  console.warn("Using clientX/Y + scrollOffset for getPagePos fallback.");
+                  pageX = e.clientX + (document.documentElement.scrollLeft || document.body.scrollLeft);
+                  pageY = e.clientY + (document.documentElement.scrollTop || document.body.scrollTop);
+             } else {
+                 console.error("Could not determine page coordinates from event:", e);
+                  return [0, 0]; // Return safe default
+             }
+             // Return coordinates as an array (iterable)
+             return [pageX || 0, pageY || 0];
+        }
+
+        // --- Custom Cursor Movement ---
+        function moveBrushCursor(e) {
+            if (!brushCursor) return;
+            // This line requires getPagePos to be defined and return an array/iterable
+            const [pageX, pageY] = getPagePos(e);
+            brushCursor.style.left = `${pageX}px`;
+            brushCursor.style.top = `${pageY}px`;
+        }
+
+        // --- Event Listeners Setup ---
+        function setupEventListeners() {
+             // Drawing Listeners - Attach mousemove specifically to the wrapper/canvas
+             canvas.addEventListener('mousedown', handleMouseDown);
+             canvas.addEventListener('mouseup', handleMouseUp);
+             // Attach mousemove only to the wrapper to track movement *over* the canvas area
+             canvasWrapper.addEventListener('mousemove', handleMouseMove);
+
+             // Cursor Visibility
+             canvasWrapper.addEventListener('mouseenter', handleMouseEnterCanvasArea);
+             canvasWrapper.addEventListener('mouseleave', handleMouseLeaveCanvasArea);
+
+             // Touch Events (Map to mouse handlers, pass relevant touch point)
+             canvas.addEventListener('touchstart', (e) => {
+                 if (e.touches.length === 1) {
+                     e.preventDefault(); // Prevent scroll/zoom
+                     handleMouseDown(e.touches[0]); // Pass the specific touch point
+                     brushCursor.style.visibility = 'hidden'; // Hide cursor during touch
+                 }
+             }, { passive: false });
+
+             canvas.addEventListener('touchmove', (e) => {
+                 if (e.touches.length === 1) {
+                     e.preventDefault(); // Prevent scroll/zoom
+                     // Only trigger brush drawing part of handleMouseMove
+                     if (currentTool === 'brush' && isDrawing) {
+                        handleMouseMove(e.touches[0]); // Pass the specific touch point
+                     }
+                     // Don't need to move visual cursor for touch
+                 }
+             }, { passive: false });
+
+             canvas.addEventListener('touchend', (e) => {
+                 // Use changedTouches to get info about the touch that *ended*
+                 handleMouseUp(e.changedTouches ? e.changedTouches[0] : {});
+             });
+             canvas.addEventListener('touchcancel', (e) => {
+                  handleMouseUp(e.changedTouches ? e.changedTouches[0] : {}); // Treat cancel like touchend
+             });
+
+             console.log("Event listeners set up.");
+        }
+
+        // --- Helper Functions ---
+        // Converts Hex to rgba(r, g, b, alpha) string
+        function hexToRgba(hex, alpha = 1) {
+             hex = hex.replace('#', '');
+             let r, g, b;
+             if (hex.length === 3) { r = parseInt(hex[0] + hex[0], 16); g = parseInt(hex[1] + hex[1], 16); b = parseInt(hex[2] + hex[2], 16); }
+             else if (hex.length === 6) { r = parseInt(hex.substring(0, 2), 16); g = parseInt(hex.substring(2, 4), 16); b = parseInt(hex.substring(4, 6), 16); }
+             else { return 'rgba(0,0,0,0)'; /* Invalid hex */ }
+             return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        }
+        // Checks if a hex color is light or dark for contrast
+        function isColorLight(hex) {
+             hex = hex.replace('#', '');
+             let r, g, b;
+             if (hex.length === 3) { r = parseInt(hex[0] + hex[0], 16); g = parseInt(hex[1] + hex[1], 16); b = parseInt(hex[2] + hex[2], 16); }
+             else if (hex.length === 6) { r = parseInt(hex.substring(0, 2), 16); g = parseInt(hex.substring(2, 4), 16); b = parseInt(hex.substring(4, 6), 16); }
+             else { return false; /* Default to dark if invalid */ }
+             const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+             return brightness > 150; // Threshold for light/dark
+        }
+        // Converts Hex to RGBA Array [r, g, b, a] (alpha 0-255)
+        function hexToRgbaArray(hex, alpha = 255) {
+             hex = hex.replace('#', '');
+             let r, g, b;
+             if (hex.length === 3) { r = parseInt(hex[0] + hex[0], 16); g = parseInt(hex[1] + hex[1], 16); b = parseInt(hex[2] + hex[2], 16); }
+             else if (hex.length === 6) { r = parseInt(hex.substring(0, 2), 16); g = parseInt(hex.substring(2, 4), 16); b = parseInt(hex.substring(4, 6), 16); }
+             else { return null; /* Invalid hex */ }
+             return [r, g, b, alpha];
+        }
+
+        // --- Initialization ---
+        console.log("Script starting...");
+        createPalette(); // Create palette elements
+        setupEventListeners(); // Set up core listeners
+        // Palette visibility listeners are set up inline above
+        console.log("Initial setup complete, waiting for image load...");
+
+    </script>
+
+</body>
+</html>
